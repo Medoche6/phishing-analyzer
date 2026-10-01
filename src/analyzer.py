@@ -48,13 +48,38 @@ def extract_links(html):
         links.append({"text": x.get_text(strip=True), "href": x["href"]})
     return links 
 
-def is_misleading(links):
-    text = links["text"]
+def is_misleading(link):
+    text = link["text"]
     if not text.startswith(("http://", "https://", "www.")):
         return False
     shown = urlparse(text if "//" in text else "//" + text).hostname
-    real = urlparse(links["href"]).hostname
+    real = urlparse(link["href"]).hostname
     return shown != real
+
+def domain_of(adress):
+    match = re.search(r"@([\w.-]+)", adress or "")
+    return match.group(1).lower() if match else None
+
+def compute_score(msg):
+
+    score = 0
+    reasons = []
+    fromd = domain_of(msg.get("From"))
+    replyd = domain_of(msg.get("Reply-To"))
+    returnd = domain_of(msg.get("Return-Path"))
+    if replyd and fromd and replyd != fromd:
+        score += 15
+        reasons.append(f"+15 : Reply-To ({replyd}) different de From ({fromd})")
+    if returnd and fromd and returnd != fromd:
+        score += 15
+        reasons.append(f"+15 : Return-Path ({returnd}) different de From ({fromd})")
+
+    for link in extract_links(get_html_body(msg)):
+        if is_misleading(link):
+            score += 25
+            reasons.append(f"+25 : lien trompeur ({link['text']} -> {link['href']})")
+
+    return score, reasons
 
 def main():
 
@@ -84,6 +109,11 @@ def main():
         flag = " [Fake]" if is_misleading(link) else ""
         print(f" - affiche : {link['text']}")
         print(f" - real : {link['href']}{flag}")
+
+    score, reasons = compute_score(msg)
+    print(f"\nScore de suspicion : {score}")
+    for reason in reasons:
+        print(f"  {reason}")
 
 
 if __name__ == "__main__":
