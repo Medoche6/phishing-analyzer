@@ -6,6 +6,9 @@ import ipaddress
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
+URGENCY_WORDS = ("urgent", "suspendu", "immédiat", "24h", "verify", "action required", "urgent", "urgently", "immediately", "immediate", "suspended", "suspension", "deactivated", "disabled", "locked", "expired", "expiration", "terminate", "termination", "verify", "verification", "validate", "validation", "confirm", "confirmation", "unauthorized", "unusual", "suspicious", "security alert", "security warning", "fraud", "fraudulent", "compromised", "breach", "threat", "warning", "account", "password", "credential", "credentials", "login", "signin", "sign-in", "username", "authentication", "authenticate", "access", "payment", "billing", "invoice", "transaction", "refund", "purchase", "order", "bank", "banking", "credit", "debit", "card", "wallet", "money", "transfer", "security", "identity", "personal", "information", "private", "document", "attachment", "notification", "alert", "request", "action", "required", "mandatory", "update", "renew", "renewal", "recover", "restore", "unlock", "click", "link")
+
+
 def parse_eml(path):
     with open (path, "rb") as file:
         return BytesParser(policy=policy.default).parse(file)
@@ -60,6 +63,17 @@ def domain_of(adress):
     match = re.search(r"@([\w.-]+)", adress or "")
     return match.group(1).lower() if match else None
 
+def is_ip(href):
+    host = urlparse(href).hostname
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
 def compute_score(msg):
 
     score = 0
@@ -78,8 +92,16 @@ def compute_score(msg):
         if is_misleading(link):
             score += 25
             reasons.append(f"+25 : lien trompeur ({link['text']} -> {link['href']})")
+        if is_ip(link["href"]):
+            score+=20
+            reasons.append(f"+20 : lien vers une ip brute ({link['href']}")
+    subject = (msg.get("Subject") or "").lower()
+    if any(word in subject for word in URGENCY_WORDS):
+        score += 10
+        reasons.append("+10 : email contenant un ou des mot(s) suspect(s)")
 
     return score, reasons
+
 
 def main():
 
@@ -98,7 +120,7 @@ def main():
         print(f" {i}. {' '.join(hop.split())}")
 
     print("\nIP trouvees :", extract_received_ips(msg))
-    print("IP d'origine :", origin_ip(msg)) #seulement received ajoute par le server est fiable, les plus anciens, l'ip d'origine peut etre falsifies par l'attaquant donc c un "indice"pas une preuve irrefutable.
+    print("IP d'origine :", origin_ip(msg)) #seulement received ajoute par le server est fiable, les plus anciens, l'ip d'origine peut etre falsifies par l'attaquant donc c'est un "indice"pas une preuve irrefutable.
 
     private_ips, public_ips = classify_ips(msg)
     print("IP privees:", private_ips if private_ips else "Aucune")
