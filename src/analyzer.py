@@ -110,17 +110,26 @@ def compute_score(msg):
         score += 10
         reasons.append("+10 : email contenant un ou des mot(s) suspect(s)")
 
-        auth = authentication_results(msg)
-        if auth.get("spf") in ("fail", "softfail"):
-            score+=20
-            reasons.append(f"+20 : SPF erreur ({auth['spf']})")
-        if auth.get("dkim") in ("fail", "none"):
-            score += 10
-            reasons.append(f"+10 : DKIM absent ou en erreur ({auth['dkim']})")
-        if auth.get("dmarc") == "fail":
-            score += 20
-            reasons.append("+20 : DMARC en erreur")
+    auth = authentication_results(msg)
+    if auth.get("spf") in ("fail", "softfail"):
+        score+=20
+        reasons.append(f"+20 : SPF erreur ({auth['spf']})")
+    if auth.get("dkim") in ("fail", "none"):
+        score += 10
+        reasons.append(f"+10 : DKIM absent ou en erreur ({auth['dkim']})")
+    if auth.get("dmarc") == "fail":
+        score += 20
+        reasons.append("+20 : DMARC en erreur")
+    score = min(score, 100) 
     return score, reasons
+
+def risk_level(score):
+
+    if score >= 45:
+        return "Score élevé, ce mail est surement du phishing"
+    if score >= 25:
+        return "Score moyen, veuillez faire attention au mail"
+    return "Score faible"
 
 
 def main():
@@ -153,7 +162,7 @@ def main():
         print(f" - real : {link['href']}{flag}")
 
     score, reasons = compute_score(msg)
-    print(f"\nScore de suspicion : {score}")
+    print(f"\nScore de suspicion : {score}/100 ({risk_level(score)})")
     for reason in reasons:
         print(f"  {reason}")
 
