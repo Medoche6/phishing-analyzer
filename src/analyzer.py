@@ -73,6 +73,16 @@ def is_ip(href):
     except ValueError:
         return False
 
+AUTHENTICATION = re.compile(r"\b(spf|dkim|dmarc)=(\w+)", re.IGNORECASE)
+
+def authentication_results(msg):
+    results = {}
+    for header in msg.get_all("Authentication-Results", []):
+        for mech, verdict in AUTHENTICATION.findall(str(header)):
+            results.setdefault(mech.lower(), verdict.lower())
+    return results
+
+
 
 def compute_score(msg):
 
@@ -100,6 +110,16 @@ def compute_score(msg):
         score += 10
         reasons.append("+10 : email contenant un ou des mot(s) suspect(s)")
 
+        auth = authentication_results(msg)
+        if auth.get("spf") in ("fail", "softfail"):
+            score+=20
+            reasons.append(f"+20 : SPF erreur ({auth['spf']})")
+        if auth.get("dkim") in ("fail", "none"):
+            score += 10
+            reasons.append(f"+10 : DKIM absent ou en erreur ({auth['dkim']})")
+        if auth.get("dmarc") == "fail":
+            score += 20
+            reasons.append("+20 : DMARC en erreur")
     return score, reasons
 
 
