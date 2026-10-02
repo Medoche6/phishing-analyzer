@@ -1,4 +1,7 @@
 import sys
+import os
+import hashlib
+import mimetypes
 from email import policy
 from email.parser import BytesParser
 import re
@@ -6,8 +9,13 @@ import ipaddress
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
-URGENCY_WORDS = ("urgent", "suspendu", "immédiat", "24h", "verify", "action required", "urgent", "urgently", "immediately", "immediate", "suspended", "suspension", "deactivated", "disabled", "locked", "expired", "expiration", "terminate", "termination", "verify", "verification", "validate", "validation", "confirm", "confirmation", "unauthorized", "unusual", "suspicious", "security alert", "security warning", "fraud", "fraudulent", "compromised", "breach", "threat", "warning", "account", "password", "credential", "credentials", "login", "signin", "sign-in", "username", "authentication", "authenticate", "access", "payment", "billing", "invoice", "transaction", "refund", "purchase", "order", "bank", "banking", "credit", "debit", "card", "wallet", "money", "transfer", "security", "identity", "personal", "information", "private", "document", "attachment", "notification", "alert", "request", "action", "required", "mandatory", "update", "renew", "renewal", "recover", "restore", "unlock", "click", "link")
+URGENCY_WORDS = ("urgent", "suspendu", "immédiat", "24h", "verify", "action required", "urgent", "urgently", "immediately", "immediate", "suspended", "suspension", "deactivated", "disabled", "locked", "expired", "expiration", "terminate", "termination", "verify", "verification", "validate", "validation", "confirm", "confirmation", "unauthorized", "unusual", "suspicious", "security alert", "security warning", "fraud", "fraudulent", "compromised", "breach", "threat", "warning", "account", "password", "credential", "credentials", "login", "signin", "sign-in", "sign in", "username", "authentication", "authenticate", "access", "payment", "billing", "invoice", "transaction", "refund", "purchase", "order", "bank", "banking", "credit", "debit", "card", "wallet", "money", "transfer", "security", "identity", "personal", "information", "private", "document", "attachment", "notification", "alert", "request", "action", "required", "mandatory", "update", "renew", "renewal", "recover", "restore", "unlock", "click", "link")
 
+HIGH_RISK_EXT = [".exe", ".scr", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".msi", ".msp", ".msix", ".msixbundle", ".appx", ".appxbundle", ".hta", ".cpl", ".lnk", ".scf", ".reg", ".jar", ".apk", ".ipa", ".dmg", ".pkg"]
+
+MEDIUM_RISK_EXT = [".dll", ".ocx", ".sys", ".drv", ".psm1", ".psd1", ".iso", ".img", ".vhd", ".vhdx", ".vmdk", ".ova", ".ovf", ".bin", ".elf", ".run", ".command", ".desktop", ".application", ".gadget"]
+
+LOW_RISK_EXT = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".txt", ".csv", ".rtf", ".odt", ".ods", ".odp", ".py", ".pyw", ".pyc", ".pyo", ".sh", ".bash", ".zsh", ".ksh", ".fish", ".pl", ".pm", ".php", ".asp", ".aspx", ".jsp", ".cgi", ".class", ".c", ".h", ".cpp", ".hpp"]
 
 def parse_eml(path):
     with open (path, "rb") as file:
@@ -82,7 +90,31 @@ def authentication_results(msg):
             results.setdefault(mech.lower(), verdict.lower())
     return results
 
+def attachment(msg):
+    attachments = []
+    for part in msg.iter_attachments():
+        data = part.get_payload(decode=True) or b""
+        attachments.append({
+            "name" : part.get_filename() or "(without name)",
+            "sha256" : hashlib.sha256(data).hexdigest(),
+            "mime" : part.get_content_type(),
+            "size" : len(data),
+        })
+    return attachments
 
+def get_ext(name):
+    return os.path.splitext(name.lower())[1]
+
+def double_extension(name):
+    parts = name.lower().split(".")
+    if len(parts) < 3:
+        return False
+    last, previous = "." + parts[-1], "." + parts[-2]
+    return (last in HIGH_RISK_EXT or last in MEDIUM_RISK_EXT) and previous in LOW_RISK_EXT
+
+def same_ext(att):
+    guessed, _ = mimetypes.guess_type(att["name"])
+    return guessed is not None and guessed != att["mime"]
 
 def compute_score(msg):
 
@@ -120,14 +152,29 @@ def compute_score(msg):
     if auth.get("dmarc") == "fail":
         score += 20
         reasons.append("+20 : DMARC en erreur")
+    for att in attachment(msg):
+        ext = get_ext(att["name"])
+        if double_extension(att["name"]):
+            score += 30
+            reasons.append(f"+30 : double extension ({att['name']})")
+        elif ext in HIGH_RISK_EXT:
+            score += 25
+            reasons.append(f"+25 : extension à haut risque ({att['name']})")
+        elif ext in MEDIUM_RISK_EXT:
+            score += 10
+            reasons.append(f"+10 : extension à risque moyen ({att['name']})")
+
+        if same_ext(att):
+            score += 15
+            reasons.append(f"+15 : type MIME incohérent ({att['name']} déclaré {att['mime']})")
     score = min(score, 100) 
     return score, reasons
 
 def risk_level(score):
 
-    if score >= 45:
+    if score >= 70:
         return "Score élevé, ce mail est surement du phishing"
-    if score >= 25:
+    if score >= 40:
         return "Score moyen, veuillez faire attention au mail"
     return "Score faible"
 
@@ -150,23 +197,32 @@ def main():
 
     print("\nIP trouvees :", extract_received_ips(msg))
     print("IP d'origine :", origin_ip(msg)) #seulement received ajoute par le server est fiable, les plus anciens, l'ip d'origine peut etre falsifies par l'attaquant donc c'est un "indice"pas une preuve irrefutable.
-
     private_ips, public_ips = classify_ips(msg)
-    print("IP privees:", private_ips if private_ips else "Aucune")
+    print("IP privees:", private_ips if private_ips else "aucune")
     print("IP public :", public_ips if public_ips else "aucune")
-
-    print("\nLiens trouvees : ")
-    for link in extract_links(get_html_body(msg)):
-        flag = " [Fake]" if is_misleading(link) else ""
-        print(f" - affiche : {link['text']}")
-        print(f" - real : {link['href']}{flag}")
+   
+    links = extract_links(get_html_body(msg))
+    if links:
+        print("\nLiens trouvés :")
+        for link in links:
+            flag = " [Fake]" if is_misleading(link) else ""
+            print(f" - affiché : {link['text']}")
+            print(f" - réel : {link['href']}{flag}")
+    else:
+        print("\nLiens trouvés : aucun")
+    
+    print("\nPièces jointes :")
+    attachments = attachment(msg)
+    if not attachments:
+        print("  aucune")
+    for att in attachments:
+        print(f"  - {att['name']} ({att['mime']}, {att['size']} octets)")
+        print(f"    sha256 : {att['sha256']}")
 
     score, reasons = compute_score(msg)
     print(f"\nScore de suspicion : {score}/100 ({risk_level(score)})")
     for reason in reasons:
         print(f"  {reason}")
 
-
 if __name__ == "__main__":
     main()
-
