@@ -1,6 +1,7 @@
 import sys
 import os
 import hashlib
+from pathlib import Path
 import mimetypes
 from email import policy
 from email.parser import BytesParser
