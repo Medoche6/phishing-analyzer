@@ -1,0 +1,24 @@
+Return-Path: <bounce@mailer-xk92.example.net>
+Received: from mail-xk92.example.net (mail-xk92.example.net [203.0.113.45])
+	by mx.local with ESMTP id abc123
+	for <victime@exemple.fr>; Thu, 1 Oct 2026 09:58:12 +0200
+From: "Comptabilite" <factures@entreprise-facture.example>
+To: victime@exemple.fr
+Subject: Facture impayee
+Date: Thu, 1 Oct 2026 09:58:00 +0200
+Message-ID: <20261001095800.def@mailer-xk92.example.net>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY123"
+
+--BOUNDARY123
+Content-Type: text/plain; charset=utf-8
+
+Bonjour, veuillez trouver votre facture en piece jointe.
+
+--BOUNDARY123
+Content-Type: application/pdf; name="facture.pdf.exe"
+Content-Disposition: attachment; filename="facture.pdf.exe"
+Content-Transfer-Encoding: base64
+
+Y29udGVudSBpbm9mZmVuc2lm
+--BOUNDARY123--

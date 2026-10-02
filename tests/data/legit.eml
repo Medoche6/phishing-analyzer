@@ -1,0 +1,20 @@
+Return-Path: <newsletter@entreprise-legit.example>
+Received: from mail.entreprise-legit.example (mail.entreprise-legit.example [203.0.113.80])
+	by mx.local with ESMTP id xyz789
+	for <client@exemple.fr>; Thu, 1 Oct 2026 08:00:00 +0200
+Authentication-Results: mx.local;
+	spf=pass smtp.mailfrom=entreprise-legit.example;
+	dkim=pass header.d=entreprise-legit.example;
+	dmarc=pass header.from=entreprise-legit.example
+From: "Entreprise Legit" <newsletter@entreprise-legit.example>
+To: client@exemple.fr
+Subject: Votre newsletter du mois
+Date: Thu, 1 Oct 2026 08:00:00 +0200
+Message-ID: <20261001080000.1@entreprise-legit.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<p>Bonjour, voici les nouveautes du mois.</p>
+<p><a href="https://www.entreprise-legit.example/actualites">https://www.entreprise-legit.example/actualites</a></p>
+</body></html>
