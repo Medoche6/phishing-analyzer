@@ -172,13 +172,17 @@ def compute_score(msg):
     return score, reasons
 
 def risk_level(score):
-
     if score >= 70:
-        return "Score élevé, ce mail est surement du phishing"
+        return "ÉLEVÉ"
     if score >= 40:
-        return "Score moyen, veuillez faire attention au mail"
-    return "Score faible"
+        return "MOYEN"
+    return "FAIBLE"
 
+RISK_MESSAGES = {
+    "ÉLEVÉ": "Score élevé, mail suspect",
+    "MOYEN": "Score moyen, faites attention",
+    "FAIBLE": "Score faible, peu d'indices suspects",
+}
 
 def main():
 
@@ -221,7 +225,8 @@ def main():
         print(f"    sha256 : {att['sha256']}")
 
     score, reasons = compute_score(msg)
-    print(f"\nScore de suspicion : {score}/100 ({risk_level(score)})")
+    level = risk_level(score)
+    print(f"\nScore de suspicion : {score}/100 ({RISK_MESSAGES[level]})")
     for reason in reasons:
         print(f"  {reason}")
 
