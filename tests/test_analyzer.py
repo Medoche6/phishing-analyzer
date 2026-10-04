@@ -78,3 +78,11 @@ def test_mail_without_headers(tmp_path):
     score, reasons = score_of_text(tmp_path, "Subject: x\n\ncorps\n")
     assert score == 0
     assert reasons == []
+
+def test_analyze_returns():
+    msg = analyzer.parse_eml(str(DATA / "phishing.eml"))
+    result = analyzer.analyse(msg)
+    assert result["score"] == 100
+    assert result["risk_level"] == "ÉLEVÉ"
+    assert result["authentication"]["spf"] == "fail"
+    assert any(link["misleading"] for link in result["links"])

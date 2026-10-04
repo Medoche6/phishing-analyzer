@@ -9,6 +9,8 @@ import re
 import ipaddress
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
+import json
+import argparse
 
 URGENCY_WORDS = ("urgent", "suspendu", "immédiat", "24h", "verify", "action required", "urgent", "urgently", "immediately", "immediate", "suspended", "suspension", "deactivated", "disabled", "locked", "expired", "expiration", "terminate", "termination", "verify", "verification", "validate", "validation", "confirm", "confirmation", "unauthorized", "unusual", "suspicious", "security alert", "security warning", "fraud", "fraudulent", "compromised", "breach", "threat", "warning", "account", "password", "credential", "credentials", "login", "signin", "sign-in", "sign in", "username", "authentication", "authenticate", "access", "payment", "billing", "invoice", "transaction", "refund", "purchase", "order", "bank", "banking", "credit", "debit", "card", "wallet", "money", "transfer", "security", "identity", "personal", "information", "private", "document", "attachment", "notification", "alert", "request", "action", "required", "mandatory", "update", "renew", "renewal", "recover", "restore", "unlock", "click", "link")
 
@@ -184,13 +186,42 @@ RISK_MESSAGES = {
     "FAIBLE": "Score faible, peu d'indices suspects",
 }
 
+def analyse(msg):
+    private_ips, public_ips = classify_ips(msg)
+    score, reasons = compute_score(msg)
+    return {
+        "headers" : {h: msg.get(h) for h in ("From", "Reply-To", "Return-Path", "Subject", "Date")},
+        "received" : [" ".join(hop.split()) for hop in msg.get_all("Received", [])],
+        "ips": {
+            "all": extract_received_ips(msg),
+            "origin": origin_ip(msg),
+            "private": private_ips,
+            "public": public_ips,
+        },
+        "links": [
+            {**link, "misleading": is_misleading(link), "ip_url": is_ip(link["href"])}
+            for link in extract_links(get_html_body(msg))
+        ],
+        "attachments": attachment(msg),
+        "authentication": authentication_results(msg),
+        "score": score,
+        "risk_level": risk_level(score),
+        "reasons": reasons,
+    }
+
+
 def main():
 
-    if len(sys.argv) != 2:
-        print("Veuillez entrer le nom du script + un fichier en argument")
-        sys.exit(1)
-    
-    msg = parse_eml(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Analyseur d'e-mails de phishing")
+    parser.add_argument("file", help="fichier .eml à analyser")
+    parser.add_argument("--json", action="store_true", help="sortie au format JSON")
+    args = parser.parse_args()
+
+    msg = parse_eml(args.file)
+
+    if args.json:
+        print(json.dumps(analyse(msg), indent=2, ensure_ascii=False)) #ces lignes s'executent que si nous utilisons --json, ex de commande : python src/analyzer.py tests/data/mail.eml --json.
+        return
 
     for header in ("From", "Reply-To", "Return-Path", "Subject", "Date"):
         print(f"{header}: {msg.get(header, '(absent)')}")
