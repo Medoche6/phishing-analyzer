@@ -3,3 +3,5 @@ venv/
 samples/
 __pycache__/
 .pytest_cache/
+*.swp
+*.swo
