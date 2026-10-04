@@ -24,7 +24,7 @@ would check by hand, then explains every point of the final score.
 - [x] Score cap and risk levels
 - [x] Unit tests with `pytest`
 - [x] More test cases (Reply-To only, no HTML, malformed mail)
-- [x] JSON output (`--json`) and HTML report
+- [x] JSON output (`--json`) 
 - [ ] Enrichment (domain age, VirusTotal lookup by hash)
 - [ ] Own SPF/DMARC verification via DNS
 
