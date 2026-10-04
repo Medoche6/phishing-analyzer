@@ -25,8 +25,8 @@ would check by hand, then explains every point of the final score.
 - [x] Attachment analysis (double extensions, MIME mismatch, SHA256)
 - [x] Score cap and risk levels
 - [x] Unit tests with `pytest`
-- [ ] More test cases (Reply-To only, no HTML, malformed mail)
-- [ ] JSON output (`--json`) and HTML report
+- [x] More test cases (Reply-To only, no HTML, malformed mail)
+- [x] JSON output (`--json`) and HTML report
 - [ ] Enrichment (domain age, VirusTotal lookup by hash)
 - [ ] Own SPF/DMARC verification via DNS
 
@@ -44,6 +44,7 @@ pip install -r requirements.txt
 
 ```bash
 python src/analyzer.py path/to/email.eml
+python src/analyzer.py path/to/email.eml --json
 ```
 ## Tests
 
@@ -54,6 +55,10 @@ Test emails in `tests/data/` are fictional (reserved documentation
 domains and IP ranges).
 
 ## Example output
+
+By default, the tool prints a human-readable report: headers, `Received` chain, IPs, links, attac     hments and the explained suspicion score.
+
+python src/analyzer.py path/to/email.eml
 
 ```
 Liens trouvés :
@@ -73,6 +78,73 @@ Score de suspicion : 100/100 (Score élevé)
   +10 : DKIM absent ou en erreur (none)
   +20 : DMARC en erreur
 ```
+## JSON output
+
+Use `--json` to get machine-readable results, for example to feed another script or a SIEM:
+
+    python src/analyzer.py path/to/email.eml --json
+
+Abridged example:
+    
+    {
+  "headers": {
+    "From": "Service Securite Banque <alerte@banque-securite.example>",
+    "Reply-To": "support-urgent@gmail.example",
+    "Return-Path": "<bounce@mailer-xk92.example.net>",
+    "Subject": "URGENT : Votre compte sera suspendu sous 24h",
+    "Date": "Thu, 01 Oct 2026 09:58:00 +0200"
+  },
+  "received": [
+    "from mail-xk92.example.net (mail-xk92.example.net [203.0.113.45]) by mx.local with ESMTP id abc123 for <victime@exemple.fr>; Thu, 1 Oct 2026 09:58:12 +0200",
+    "from localhost (unknown [198.51.100.7]) by mail-xk92.example.net with SMTP id def456; Thu, 1 Oct 2026 09:58:10 +0200"
+  ],
+  "ips": {
+    "all": [
+      "203.0.113.45",
+      "198.51.100.7"
+    ],
+    "origin": "198.51.100.7",
+    "private": [
+      "203.0.113.45",
+      "198.51.100.7"
+    ],
+    "public": []
+  },
+  "links": [
+    {
+      "text": "https://www.banque-securite.example/connexion",
+      "href": "http://192.0.2.99/verification/login.php",
+      "misleading": true,
+      "ip_url": true
+    },
+    {
+      "text": "Verifier mon compte",
+      "href": "http://bit.example/x7Yz9",
+      "misleading": false,
+      "ip_url": false
+    }
+  ],
+  "attachments": [],
+  "authentication": {
+    "spf": "fail",
+    "dkim": "none",
+    "dmarc": "fail"
+  },
+  "score": 100,
+  "risk_level": "ÉLEVÉ",
+  "reasons": [
+    "+15 : Reply-To (gmail.example) different de From (banque-securite.example)",
+    "+15 : Return-Path (mailer-xk92.example.net) different de From (banque-securite.example)",
+    "+25 : lien trompeur (https://www.banque-securite.example/connexion -> http://192.0.2.99/verification/login.php)",
+    "+20 : lien vers une ip brute (http://192.0.2.99/verification/login.php",
+    "+10 : email contenant un ou des mot(s) suspect(s)",
+    "+20 : SPF erreur (fail)",
+    "+10 : DKIM absent ou en erreur (none)",
+    "+20 : DMARC en erreur"
+  ]
+}
+
+
 ## Safety
 
 The analysis is static only: links are never visited and attachments are
