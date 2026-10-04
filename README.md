@@ -61,7 +61,7 @@ python src/analyzer.py path/to/email.eml
 ```
 Liens trouvés :
  - affiché : https://www.banque-securite.example/connexion
- - réel : http://192.0.2.99/verification/login.php [Fake]
+ - réel : http://X.X.X.X/verification/login.php [Fake]
 
 Pièces jointes :
   aucune
@@ -69,8 +69,8 @@ Pièces jointes :
 Score de suspicion : 100/100 (Score élevé)
   +15 : Reply-To (gmail.example) different de From (banque-securite.example)
   +15 : Return-Path (mailer-xk92.example.net) different de From (banque-securite.example)
-  +25 : lien trompeur (https://www.banque-securite.example/connexion -> http://192.0.2.99/verification/login.php)
-  +20 : lien vers une ip brute (http://192.0.2.99/verification/login.php)
+  +25 : lien trompeur (https://www.banque-securite.example/connexion -> http://X.X.X.X/verification/login.php)
+  +20 : lien vers une ip brute (http://X.X.X.X/verification/login.php)
   +10 : email contenant un ou des mot(s) suspect(s)
   +20 : SPF erreur (fail)
   +10 : DKIM absent ou en erreur (none)
@@ -94,25 +94,25 @@ Abridged example:
     "Date": "Thu, 01 Oct 2026 09:58:00 +0200"
   },
   "received": [
-    "from mail-xk92.example.net (mail-xk92.example.net [203.0.113.45]) by mx.local with ESMTP id abc123 for <victime@exemple.fr>; Thu, 1 Oct 2026 09:58:12 +0200",
-    "from localhost (unknown [198.51.100.7]) by mail-xk92.example.net with SMTP id def456; Thu, 1 Oct 2026 09:58:10 +0200"
+    "from mail-xk92.example.net (mail-xk92.example.net [X.X.X.X]) by mx.local with ESMTP id abc123 for <victime@exemple.fr>; Thu, 1 Oct 2026 09:58:12 +0200",
+    "from localhost (unknown [X.X.X.X]) by mail-xk92.example.net with SMTP id def456; Thu, 1 Oct 2026 09:58:10 +0200"
   ],
   "ips": {
     "all": [
-      "203.0.113.45",
-      "198.51.100.7"
+      "X.X.X.X",
+      "X.X.X.X"
     ],
-    "origin": "198.51.100.7",
+    "origin": "X.X.X.X",
     "private": [
-      "203.0.113.45",
-      "198.51.100.7"
+      "X.X.X.X",
+      "X.X.X.X"
     ],
     "public": []
   },
   "links": [
     {
       "text": "https://www.banque-securite.example/connexion",
-      "href": "http://192.0.2.99/verification/login.php",
+      "href": "http://X.X.X.X/verification/login.php",
       "misleading": true,
       "ip_url": true
     },
@@ -134,8 +134,8 @@ Abridged example:
   "reasons": [
     "+15 : Reply-To (gmail.example) different de From (banque-securite.example)",
     "+15 : Return-Path (mailer-xk92.example.net) different de From (banque-securite.example)",
-    "+25 : lien trompeur (https://www.banque-securite.example/connexion -> http://192.0.2.99/verification/login.php)",
-    "+20 : lien vers une ip brute (http://192.0.2.99/verification/login.php",
+    "+25 : lien trompeur (https://www.banque-securite.example/connexion -> http://X.X.X.X/verification/login.php)",
+    "+20 : lien vers une ip brute (http://X.X.X.X/verification/login.php",
     "+10 : email contenant un ou des mot(s) suspect(s)",
     "+20 : SPF erreur (fail)",
     "+10 : DKIM absent ou en erreur (none)",
