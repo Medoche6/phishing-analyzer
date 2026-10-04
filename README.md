@@ -19,8 +19,6 @@ would check by hand, then explains every point of the final score.
 
 ## Roadmap
 
-## Roadmap
-
 - [x] SPF / DKIM / DMARC checks from `Authentication-Results`
 - [x] Attachment analysis (double extensions, MIME mismatch, SHA256)
 - [x] Score cap and risk levels
@@ -85,6 +83,7 @@ Use `--json` to get machine-readable results, for example to feed another script
     python src/analyzer.py path/to/email.eml --json
 
 Abridged example:
+```json
     
     {
   "headers": {
@@ -143,7 +142,7 @@ Abridged example:
     "+20 : DMARC en erreur"
   ]
 }
-
+```
 
 ## Safety
 
