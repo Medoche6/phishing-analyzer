@@ -4,9 +4,6 @@ Static phishing email analyzer with an explainable suspicion score.
 
 Give it a `.eml` file and it extracts the technical indicators an SOC analyst
 would check by hand, then explains every point of the final score.
-
-## Features
-
 ## Features
 
 - Header parsing (`From`, `Reply-To`, `Return-Path`, `Subject`, `Date`)
