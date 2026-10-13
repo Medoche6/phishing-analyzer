@@ -22,7 +22,7 @@ would check by hand, then explains every point of the final score.
 - [x] Unit tests with `pytest`
 - [x] More test cases (Reply-To only, no HTML, malformed mail)
 - [x] JSON output (`--json`) 
-- [ ] Enrichment (domain age, VirusTotal lookup by hash)
+- [x] Enrichment (domain age, VirusTotal lookup by hash)
 - [ ] Own SPF/DMARC verification via DNS
 
 ## Installation
@@ -140,6 +140,82 @@ Abridged example:
   ]
 }
 ```
+## VirusTotal enrichment (optional)
+
+The `--vt` option checks the SHA256 hash of each attachment against
+[VirusTotal](https://www.virustotal.com). It is optional: without it, the tool
+works fully offline.
+
+### What is sent to VirusTotal
+
+Only the **SHA256 hash** of each attachment is sent, never the file itself.
+Email content, headers and links are not sent either.
+
+### Setup
+
+VirusTotal requires an API key. The key is **not included** in this project:
+each user must use their own free key.
+
+1. Create a free account at [virustotal.com](https://www.virustotal.com).
+2. Open your profile and copy your **API key**.
+3. Load the key in your terminal (the input is hidden and not saved in
+   your shell history):
+
+       read -s VT_API_KEY && export VT_API_KEY
+
+   Paste the key, then press Enter.
+
+4. Check that it is loaded (a VirusTotal key has 64 characters):
+
+       echo ${#VT_API_KEY}
+
+The variable only exists in the terminal where you set it. Repeat step 3 in
+each new terminal.
+
+### Usage
+
+python src/analyzer.py path/to/email.eml --vt # with VirusTotal lookup
+
+Combine it with JSON output if needed:
+
+python src/analyzer.py path/to/email.eml --vt --json
+
+### Possible results
+
+| Status     | Meaning                                                        | Score impact |
+|------------|----------------------------------------------------------------|--------------|
+| `detected` | At least one engine flags the file as malicious or suspicious  | +40          |
+| `clean`    | Known file, no detection                                       | none         |
+| `unknown`  | Hash never seen by VirusTotal (this does **not** mean "safe")  | none         |
+| `error`    | Network problem, invalid key or quota exceeded                 | none         |
+
+### Without an API key
+
+If `VT_API_KEY` is not set, the tool prints a warning and runs the local
+analysis only:
+
+    VT_API_KEY absente : enrichissement VirusTotal ignoré.
+
+### Limits
+
+- The free VirusTotal API allows about **4 requests per minute** and is meant
+  for non-commercial use. The tool waits 15 seconds between two attachments to
+  respect this quota.
+- A network connection is required for this option.
+- An `unknown` result does not prove that a file is harmless: targeted or
+  very recent malware may not be known yet.
+
+### Security notes
+
+- **Never commit your API key.** Do not write it in the code, in a README or
+  in a file inside the repository.
+- If you think your key was exposed, regenerate it from your VirusTotal
+  profile page.
+- You can test your setup safely with the EICAR test file hash, which
+  antivirus engines flag on purpose:
+
+      275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f
+
 
 ## Safety
 
