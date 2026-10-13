@@ -86,3 +86,4 @@ def test_analyze_returns():
     assert result["risk_level"] == "ÉLEVÉ"
     assert result["authentication"]["spf"] == "fail"
     assert any(link["misleading"] for link in result["links"])
+

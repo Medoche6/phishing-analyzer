@@ -8,9 +8,13 @@ from email.parser import BytesParser
 import re
 import ipaddress
 from urllib.parse import urlparse
+import urllib.request
+import urllib.error
 from bs4 import BeautifulSoup
 import json
 import argparse
+import time
+
 
 URGENCY_WORDS = ("urgent", "suspendu", "immédiat", "24h", "verify", "action required", "urgent", "urgently", "immediately", "immediate", "suspended", "suspension", "deactivated", "disabled", "locked", "expired", "expiration", "terminate", "termination", "verify", "verification", "validate", "validation", "confirm", "confirmation", "unauthorized", "unusual", "suspicious", "security alert", "security warning", "fraud", "fraudulent", "compromised", "breach", "threat", "warning", "account", "password", "credential", "credentials", "login", "signin", "sign-in", "sign in", "username", "authentication", "authenticate", "access", "payment", "billing", "invoice", "transaction", "refund", "purchase", "order", "bank", "banking", "credit", "debit", "card", "wallet", "money", "transfer", "security", "identity", "personal", "information", "private", "document", "attachment", "notification", "alert", "request", "action", "required", "mandatory", "update", "renew", "renewal", "recover", "restore", "unlock", "click", "link")
 
@@ -209,18 +213,73 @@ def analyse(msg):
         "reasons": reasons,
     }
 
+VT_URL = "https://www.virustotal.com/api/v3/files/"
+VT_DELAY = 15 #delaie en secondes pour la version gratuite, 4 lookups / min 
+
+def vt_lookup(sha256, api_key, timeout=10):
+    #on prendra que les hash car il ne faut pas upload les fichiers critiques dans virustotal directement car les abonnées de virustotal y ont accès, on donnera a virustotal seulement le hash de fichier. 
+    req = urllib.request.Request(VT_URL + sha256, headers={"x-apikey": api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"status": "unknown"}
+        details = {401: "cle api invalide", 429: "quota atteint"} #erreur 429 : "L’erreur HTTP 429 (« Too Many Requests ») signifie que le client (votre navigateur, une application ou un script) a envoyé trop de requêtes au serveur dans un laps de temps imparti."
+        return {"status": "error", "detail": details.get(e.code, f"HTTP {e.code}")}
+
+        return {"status": "error", "detail": "reseau inaccessible"}
+
+    stats = data["data"]["attributes"]["last_analysis_stats"]
+    malicious = stats.get("malicious", 0)
+    suspicious = stats.get("suspicious", 0)
+    return {
+        "status" : "detected" if malicious + suspicious > 0 else "clean",
+        "malicious": malicious,
+        "suspicious": suspicious,
+        "total": sum(stats.values()),
+    }
+
+def apply_virustotal(result):
+    #Ajoute le verdict VT à chaque pièce jointe et met à jour le score."""
+    api_key = os.environ.get("VT_API_KEY")
+    if not api_key:
+        print("VT_API_KEY absente : enrichissement VirusTotal ignoré.", file=sys.stderr)
+        return result
+
+    for i, att in enumerate(result["attachments"]):
+        if i > 0:
+            time.sleep(VT_DELAY)
+        att["virustotal"] = vt_lookup(att["sha256"], api_key)
+        vt = att["virustotal"]
+        if vt["status"] == "detected":
+            result["score"] += 40
+            result["reasons"].append(
+                f"+40 : virustotal signale {att['name']}"
+                f"({vt['malicious']} malveillant, {vt['suspicious']} suspect"
+                f"sur {vt['total']} moteurs)"
+            )
+
+    result["score"] = min(result["score"], 100)
+    result["risk_level"] = risk_level(result["score"])
+    return result
 
 def main():
 
     parser = argparse.ArgumentParser(description="Analyseur d'e-mails de phishing")
     parser.add_argument("file", help="fichier .eml à analyser")
     parser.add_argument("--json", action="store_true", help="sortie au format JSON")
+    parser.add_argument("--vt", action="store_true",
+                        help="interroger VirusTotal avec le SHA256 des pièces jointes")
     args = parser.parse_args()
 
     msg = parse_eml(args.file)
+    result = analyse(msg)
+    if args.vt:
+        apply_virustotal(result)
 
     if args.json:
-        print(json.dumps(analyse(msg), indent=2, ensure_ascii=False)) #ces lignes s'executent que si nous utilisons --json, ex de commande : python src/analyzer.py tests/data/mail.eml --json.
+        print(json.dumps(result, indent=2, ensure_ascii=False)) #ces lignes s'executent que si nous utilisons --json, ex de commande : python src/analyzer.py tests/data/mail.eml --json.
         return
 
     for header in ("From", "Reply-To", "Return-Path", "Subject", "Date"):
@@ -248,18 +307,23 @@ def main():
         print("\nLiens trouvés : aucun")
     
     print("\nPièces jointes :")
-    attachments = attachment(msg)
-    if not attachments:
-        print("  aucune")
-    for att in attachments:
-        print(f"  - {att['name']} ({att['mime']}, {att['size']} octets)")
-        print(f"    sha256 : {att['sha256']}")
+    attachments = result["attachments"]
+    if attachments:
+        print("\nPièces jointes :")
+        for att in attachments:
+            print(f"  - {att['name']} ({att['mime']}, {att['size']} octets)")
+            print(f"    sha256 : {att['sha256']}")
+            if "virustotal" in att:
+                print(f"    virustotal : {att['virustotal']}")
+    else:
+        print("\nPièces jointes : aucune")
 
-    score, reasons = compute_score(msg)
-    level = risk_level(score)
-    print(f"\nScore de suspicion : {score}/100 ({RISK_MESSAGES[level]})")
-    for reason in reasons:
+    level = result["risk_level"]
+    print(f"\nScore de suspicion : {result['score']}/100 ({RISK_MESSAGES[level]})")
+    for reason in result["reasons"]:
         print(f"  {reason}")
 
 if __name__ == "__main__":
     main()
+
+
