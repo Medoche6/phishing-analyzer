@@ -190,7 +190,7 @@ RISK_MESSAGES = {
     "FAIBLE": "Score faible, peu d'indices suspects",
 }
 
-def analyse(msg):
+def analyze(msg):
     private_ips, public_ips = classify_ips(msg)
     score, reasons = compute_score(msg)
     return {
@@ -253,13 +253,19 @@ def apply_virustotal(result):
         att["virustotal"] = vt_lookup(att["sha256"], api_key)
         vt = att["virustotal"]
         if vt["status"] == "detected":
-            result["score"] += 40
+            hits = vt["malicious"] + vt["suspicious"]
+            if hits >= 10:
+                points = 40
+            elif hits >= 3:
+                points = 25
+            else:
+                points = 10
+            result["score"] += points
             result["reasons"].append(
-                f"+40 : virustotal signale {att['name']}"
-                f"({vt['malicious']} malveillant, {vt['suspicious']} suspect"
+                f"+{points} : VirusTotal signale {att['name']} "
+                f"({vt['malicious']} malveillant, {vt['suspicious']} suspect "
                 f"sur {vt['total']} moteurs)"
-            )
-
+            )# on justifie ce choix car elle est rare et se déclenche seulement sur détection. Les faux positifs sont limités par construction : unknown et clean ne rapportent rien., sachant qu'il contient plus de 70 moteurs d'anti virus, les autres restrictions decrivent un comportement suspect, tandis qu'ici on a la confirmation de la présence d'un fichier dangereux.
     result["score"] = min(result["score"], 100)
     result["risk_level"] = risk_level(result["score"])
     return result
@@ -269,12 +275,11 @@ def main():
     parser = argparse.ArgumentParser(description="Analyseur d'e-mails de phishing")
     parser.add_argument("file", help="fichier .eml à analyser")
     parser.add_argument("--json", action="store_true", help="sortie au format JSON")
-    parser.add_argument("--vt", action="store_true",
-                        help="interroger VirusTotal avec le SHA256 des pièces jointes")
+    parser.add_argument("--vt", action="store_true", help="interroger VirusTotal avec le SHA256 des pièces jointes")
     args = parser.parse_args()
 
     msg = parse_eml(args.file)
-    result = analyse(msg)
+    result = analyze(msg)
     if args.vt:
         apply_virustotal(result)
 

@@ -13,6 +13,7 @@ def score_of(name):
     msg = analyzer.parse_eml(str(DATA / name))
     return analyzer.compute_score(msg)
 
+
 def score_of_text(tmp_path, raw):
 
     path = tmp_path / "mail.eml"
@@ -41,6 +42,7 @@ def test_double_extension_detected():
 def test_misleading_link_detected():
     _, reasons = score_of("phishing.eml")
     assert any("lien trompeur" in r for r in reasons)
+
 
 def test_reply_low_score(tmp_path):
     raw = (
@@ -79,11 +81,63 @@ def test_mail_without_headers(tmp_path):
     assert score == 0
     assert reasons == []
 
+
 def test_analyze_returns():
     msg = analyzer.parse_eml(str(DATA / "phishing.eml"))
-    result = analyzer.analyse(msg)
+    result = analyzer.analyze(msg)
     assert result["score"] == 100
     assert result["risk_level"] == "ÉLEVÉ"
     assert result["authentication"]["spf"] == "fail"
     assert any(link["misleading"] for link in result["links"])
 
+
+# tests for virustotal
+
+
+def fake_VT(hits, total=70):  # fabrique une fausse reponse de virustotal, sans toucher au reseau
+
+    return lambda sha, key: {
+        "status": "detected", "malicious": hits, "suspicious": 0, "total": total}
+
+
+def run_with_VT(monkeypatch, hits):
+    monkeypatch.setenv("VT_API_KEY", "fausse-cle")
+    monkeypatch.setattr(analyzer, "vt_lookup", fake_VT(hits))
+    monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
+    msg = analyzer.parse_eml(str(DATA / "attach.eml"))
+    base = analyzer.analyze(msg)["score"]
+    result = analyzer.apply_virustotal(analyzer.analyze(msg))
+    return base, result
+
+
+def test_VT_strong_consensus_adds_40(monkeypatch):
+
+    base, result = run_with_VT(monkeypatch, hits=50)
+    assert result["score"] == min(base + 40, 100)
+    assert any("+40" in r and "VirusTotal" in r for r in result["reasons"])
+
+
+def test_VT_medium_consensus_adds_25(monkeypatch):
+    base, result = run_with_VT(monkeypatch, hits=5)
+    assert result["score"] == min(base + 25, 100)
+
+
+def test_VT_few_detection_adds_10(monkeypatch):
+    base, result = run_with_VT(monkeypatch, hits=2)
+    assert result["score"] == min(base + 10, 100)
+
+
+def test_VT_unkown_adds_nothing(monkeypatch):
+    monkeypatch.setenv("VT_API_KEY", "fake-key")
+    monkeypatch.setattr(analyzer, "vt_lookup", lambda sha, key: {"status": "unknown"})
+    msg = analyzer.parse_eml(str(DATA / "attach.eml"))
+    base = analyzer.analyze(msg)["score"]
+    result = analyzer.apply_virustotal(analyzer.analyze(msg))
+    assert result["score"] == base
+
+
+def test_VT_skipped_without_key(monkeypatch):
+    monkeypatch.delenv("VT_API_KEY", raising=False)
+    msg = analyzer.parse_eml(str(DATA / "attach.eml"))
+    result = analyzer.apply_virustotal(analyzer.analyze(msg))
+    assert "virustotal" not in result["attachments"][0]
