@@ -246,6 +246,9 @@ def apply_virustotal(result):
     if not api_key:
         print("VT_API_KEY absente : enrichissement VirusTotal ignoré.", file=sys.stderr)
         return result
+    if not result["attachments"]:
+        print("VirusTotal : aucune pièce jointe à vérifier.", file=sys.stderr)
+        return result
 
     for i, att in enumerate(result["attachments"]):
         if i > 0:
