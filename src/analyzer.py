@@ -14,6 +14,8 @@ from bs4 import BeautifulSoup
 import json
 import argparse
 import time
+import dns.resolver
+import dns.exception
 
 
 URGENCY_WORDS = ("urgent", "suspendu", "immédiat", "24h", "verify", "action required", "urgent", "urgently", "immediately", "immediate", "suspended", "suspension", "deactivated", "disabled", "locked", "expired", "expiration", "terminate", "termination", "verify", "verification", "validate", "validation", "confirm", "confirmation", "unauthorized", "unusual", "suspicious", "security alert", "security warning", "fraud", "fraudulent", "compromised", "breach", "threat", "warning", "account", "password", "credential", "credentials", "login", "signin", "sign-in", "sign in", "username", "authentication", "authenticate", "access", "payment", "billing", "invoice", "transaction", "refund", "purchase", "order", "bank", "banking", "credit", "debit", "card", "wallet", "money", "transfer", "security", "identity", "personal", "information", "private", "document", "attachment", "notification", "alert", "request", "action", "required", "mandatory", "update", "renew", "renewal", "recover", "restore", "unlock", "click", "link")
@@ -273,37 +275,110 @@ def apply_virustotal(result):
     result["risk_level"] = risk_level(result["score"])
     return result
 
+def dns_txt(name, timeout=5):#Renvoie la liste des enregistrements TXT, [] si aucun, None si erreur réseau
+    try:
+        answers = dns.resolver.resolve(name, "TXT", lifetime=timeout)
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return []
+    except dns.exception.DNSException:
+        return None
+    return ["".join(s.decode(errors="replace") for s in r.strings) for r in answers]
+
+
+def check_dns_policy(domain):
+    #Lit les politiques SPF et DMARC publiées par un domaine
+    info = {"domain": domain, "spf": None, "spf_all": None,
+            "dmarc": None, "dmarc_policy": None, "error": False}
+    spf_txt = dns_txt(domain)
+    dmarc_txt = dns_txt("_dmarc." + domain)
+    if spf_txt is None or dmarc_txt is None:
+        info["error"] = True
+        return info
+
+    for record in spf_txt:
+        if record.lower().startswith("v=spf1"):
+            info["spf"] = record
+            m = re.search(r"\s([+\-~?]?)all\b", record)
+            if m:
+                info["spf_all"] = (m.group(1) or "+") + "all"
+
+    for record in dmarc_txt:
+        if record.lower().startswith("v=dmarc1"):
+            info["dmarc"] = record
+            m = re.search(r"\bp=(\w+)", record, re.IGNORECASE)
+            if m:
+                info["dmarc_policy"] = m.group(1).lower()
+    return info
+
+
+def apply_dns(result, msg):
+    #Ajoute la politique DNS du domaine du From et met à jour le score
+    domain = domain_of(msg.get("From"))
+    if not domain:
+        return result
+
+    info = check_dns_policy(domain)
+    result["dns"] = info
+    if info["error"]:
+        print("DNS : requête impossible, vérification ignorée.", file=sys.stderr)
+        return result
+
+    if info["spf"] is None:
+        result["score"] += 10
+        result["reasons"].append(f"+10 : aucun enregistrement SPF pour {domain}")
+    elif info["spf_all"] in ("+all", "?all"):
+        result["score"] += 10
+        result["reasons"].append(f"+10 : SPF permissif ({info['spf_all']}) pour {domain}")
+
+    if info["dmarc"] is None:
+        result["score"] += 10
+        result["reasons"].append(f"+10 : aucun enregistrement DMARC pour {domain}")
+    elif info["dmarc_policy"] == "none":
+        result["score"] += 5
+        result["reasons"].append(f"+5 : DMARC en mode surveillance seulement (p=none) pour {domain}")
+
+    result["score"] = min(result["score"], 100)
+    result["risk_level"] = risk_level(result["score"])
+    return result
+
+
 def main():
 
     parser = argparse.ArgumentParser(description="Analyseur d'e-mails de phishing")
     parser.add_argument("file", help="fichier .eml à analyser")
     parser.add_argument("--json", action="store_true", help="sortie au format JSON")
-    parser.add_argument("--vt", action="store_true", help="interroger VirusTotal avec le SHA256 des pièces jointes")
+    parser.add_argument("--vt", action="store_true",
+                        help="interroger VirusTotal avec le SHA256 des pièces jointes")
+    parser.add_argument("--dns", action="store_true",
+                        help="lire les politiques SPF/DMARC du domaine du From")
     args = parser.parse_args()
 
     msg = parse_eml(args.file)
     result = analyze(msg)
     if args.vt:
         apply_virustotal(result)
+    if args.dns:
+        apply_dns(result, msg)
 
+    # ces lignes ne s'exécutent que si on utilise --json
     if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False)) #ces lignes s'executent que si nous utilisons --json, ex de commande : python src/analyzer.py tests/data/mail.eml --json.
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
     for header in ("From", "Reply-To", "Return-Path", "Subject", "Date"):
         print(f"{header}: {msg.get(header, '(absent)')}")
 
     print("\nChemin de transit (received) :")
-
     for i, hop in enumerate(msg.get_all("Received", []), 1):
         print(f" {i}. {' '.join(hop.split())}")
 
     print("\nIP trouvees :", extract_received_ips(msg))
-    print("IP d'origine :", origin_ip(msg)) #seulement received ajoute par le server est fiable, les plus anciens, l'ip d'origine peut etre falsifies par l'attaquant donc c'est un "indice"pas une preuve irrefutable.
+    # seul le Received ajouté leserveur est fiable : l'IP d'origine peut être falsifiée par l'attaquant, c'est un indice, pas une preuve
+    print("IP d'origine :", origin_ip(msg))
     private_ips, public_ips = classify_ips(msg)
     print("IP privees:", private_ips if private_ips else "aucune")
     print("IP public :", public_ips if public_ips else "aucune")
-   
+
     links = extract_links(get_html_body(msg))
     if links:
         print("\nLiens trouvés :")
@@ -313,8 +388,7 @@ def main():
             print(f" - réel : {link['href']}{flag}")
     else:
         print("\nLiens trouvés : aucun")
-    
-    print("\nPièces jointes :")
+
     attachments = result["attachments"]
     if attachments:
         print("\nPièces jointes :")
@@ -326,12 +400,17 @@ def main():
     else:
         print("\nPièces jointes : aucune")
 
+    if "dns" in result and not result["dns"]["error"]:
+        d = result["dns"]
+        print(f"\nPolitique DNS de {d['domain']} :")
+        print(f"  SPF   : {d['spf'] or 'absent'}")
+        print(f"  DMARC : {d['dmarc'] or 'absent'}")
+
     level = result["risk_level"]
     print(f"\nScore de suspicion : {result['score']}/100 ({RISK_MESSAGES[level]})")
     for reason in result["reasons"]:
         print(f"  {reason}")
 
+
 if __name__ == "__main__":
     main()
-
-

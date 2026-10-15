@@ -141,3 +141,38 @@ def test_VT_skipped_without_key(monkeypatch):
     msg = analyzer.parse_eml(str(DATA / "attach.eml"))
     result = analyzer.apply_virustotal(analyzer.analyze(msg))
     assert "virustotal" not in result["attachments"][0]
+
+def run_with_dns(monkeypatch, records):
+    monkeypatch.setattr(analyzer, "dns_txt", lambda name, timeout=5: records.get(name, []))
+    msg = analyzer.parse_eml(str(DATA / "legit.eml"))
+    base = analyzer.analyze(msg)["score"]
+    result = analyzer.apply_dns(analyzer.analyze(msg), msg)
+    return base, result
+
+
+def test_dns_protected_domain_adds_nothing(monkeypatch):
+    d = "entreprise-legit.example"
+    base, result = run_with_dns(monkeypatch, {
+        d: ["v=spf1 include:_spf.example.net -all"],
+        "_dmarc." + d: ["v=DMARC1; p=reject"]})
+    assert result["score"] == base
+
+
+def test_dns_no_records_adds_20(monkeypatch):
+    base, result = run_with_dns(monkeypatch, {})
+    assert result["score"] == base + 20
+
+
+def test_dns_dmarc_none_adds_5(monkeypatch):
+    d = "entreprise-legit.example"
+    base, result = run_with_dns(monkeypatch, {
+        d: ["v=spf1 -all"], "_dmarc." + d: ["v=DMARC1; p=none"]})
+    assert result["score"] == base + 5
+
+
+def test_dns_error_adds_nothing(monkeypatch):
+    monkeypatch.setattr(analyzer, "dns_txt", lambda name, timeout=5: None)
+    msg = analyzer.parse_eml(str(DATA / "legit.eml"))
+    base = analyzer.analyze(msg)["score"]
+    result = analyzer.apply_dns(analyzer.analyze(msg), msg)
+    assert result["score"] == base
