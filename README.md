@@ -24,6 +24,7 @@ would check by hand, then explains every point of the final score.
 - [x] JSON output (`--json`) 
 - [x] Enrichment (domain age, VirusTotal lookup by hash)
 - [x] Own SPF/DMARC verification via DNS
+- [ ] Typosquatting detection
 
 ## Installation
 
