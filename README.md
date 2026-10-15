@@ -23,7 +23,7 @@ would check by hand, then explains every point of the final score.
 - [x] More test cases (Reply-To only, no HTML, malformed mail)
 - [x] JSON output (`--json`) 
 - [x] Enrichment (domain age, VirusTotal lookup by hash)
-- [ ] Own SPF/DMARC verification via DNS
+- [x] Own SPF/DMARC verification via DNS
 
 ## Installation
 
@@ -40,6 +40,8 @@ pip install -r requirements.txt
 ```bash
 python src/analyzer.py path/to/email.eml
 python src/analyzer.py path/to/email.eml --json
+python src/analyzer.py path/to/email.eml --vt
+python src/analyzer.py path/to/email.eml --dns # with SPF/DMARC DNS lookup
 ```
 ## Tests
 
@@ -212,9 +214,28 @@ analysis only:
 - If you think your key was exposed, regenerate it from your VirusTotal
   profile page.
 - You can test your setup safely with the EICAR test file hash, which
-  antivirus engines flag on purpose:
+  antivirus engines flag on purpose: 
+    
+275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f
 
-      275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f
+## DNS policy lookup (optional)
+
+`--dns` reads the SPF and DMARC records published by the `From` domain. It requires network access.
+
+python src/analyzer.py path/to/email.eml --dns
+
+It can be combined with the other options:
+
+python src/analyzer.py path/to/email.eml --vt --dns --json
+
+| Finding | Score impact |
+|---------|--------------|
+| No SPF record | +10 |
+| Permissive SPF (`+all` / `?all`) | +10 |
+| No DMARC record | +10 |
+| DMARC `p=none` (monitoring only) | +5 |
+
+This measures how well the domain is protected against spoofing. It does **not** check whether the sending IP is authorized by SPF (full SPF evaluation is a future improvement). If the DNSquery fails, the tool prints a warning and adds no points. Note that the lookup sends DNS queries about the sender's domain.
 
 
 ## Safety
